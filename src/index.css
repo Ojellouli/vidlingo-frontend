@@ -1,27 +1,13 @@
 @tailwind base;
-   @tailwind components;
-   @tailwind utilities;
+@tailwind components;
+@tailwind utilities;
 
-   * {
-     margin: 0;
-     padding: 0;
-     box-sizing: border-box;
-   }
+{
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+}
 
-   body {
-     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-   }
-```
-
-4. **Sauvegardez** (`Ctrl+S`) et fermez
-
-✅ **index.css est créé!**
-
----
-
-**Récapitulatif de votre dossier `src` maintenant:**
-```
-src/
-├── main.jsx      ✅
-├── App.jsx       ✅
-└── index.css     ✅
+body {
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
