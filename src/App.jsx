@@ -7,6 +7,7 @@ function App() {
   const [url, setUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
+  const [videoTitle, setVideoTitle] = useState('');
   const [qualities, setQualities] = useState([]);
   const [languages, setLanguages] = useState([]);
   const [qualityFormats, setQualityFormats] = useState({});
@@ -39,6 +40,7 @@ function App() {
       
       if (result.success) {
         setAnalyzed(true);
+        setVideoTitle(result.data.title);
         const quals = Object.keys(result.data.video_formats);
         const langs = Object.keys(result.data.audio_formats);
         setQualities(quals);
@@ -61,21 +63,29 @@ function App() {
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && url && !isAnalyzing) {
+      handleAnalyze();
+    }
+  };
+
   const handleAddToQueue = () => {
     if (!analyzed) {
       alert('Please analyze a video first');
       return;
     }
 
+    const audioData = audioFormats[selectedAudio];
     const newItem = {
       id: Date.now(),
       url,
+      title: videoTitle,
       quality: selectedQuality,
       language: selectedAudio,
       videoFormatId: qualityFormats[selectedQuality],
-      audioFormatId: audioFormats[selectedAudio],
-      status: 'Queued',
-      title: url
+      audioFormatId: audioData.format_id,
+      langCode: audioData.lang_code,
+      status: 'Queued'
     };
 
     setDownloadQueue([...downloadQueue, newItem]);
@@ -109,8 +119,10 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url: item.url,
+            title: item.title,
             video_format_id: item.videoFormatId,
-            audio_format_id: item.audioFormatId
+            audio_format_id: item.audioFormatId,
+            lang_code: item.langCode
           })
         });
 
@@ -173,7 +185,8 @@ function App() {
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="Paste YouTube URL here..."
+                onKeyPress={handleKeyPress}
+                placeholder="Paste YouTube URL here and press Enter..."
                 className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg focus:border-cyan-400 focus:outline-none text-white placeholder-gray-400 mb-3"
               />
               <div className="flex gap-2">
@@ -280,7 +293,7 @@ function App() {
               <div className="space-y-3">
                 {downloadQueue.map((item) => (
                   <div key={item.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                    <p className="text-sm font-semibold truncate mb-2">{item.url}</p>
+                    <p className="text-sm font-semibold truncate mb-2">{item.title || item.url}</p>
                     <p className="text-xs text-gray-400">Quality: {item.quality}</p>
                     <p className="text-xs text-gray-400">Language: {item.language}</p>
                     <div className="flex items-center gap-2 mt-2">
