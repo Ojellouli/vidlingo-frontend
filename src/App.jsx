@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Video, Music, Trash2, Play } from 'lucide-react';
+import { Download, Video, Music, Trash2, Play, CheckCircle } from 'lucide-react';
 
 const API_URL = 'https://api.vidlingo.site';
 
@@ -14,6 +14,7 @@ function App() {
   const [downloadQueue, setDownloadQueue] = useState([]);
   const [status, setStatus] = useState('Ready');
   const [statusDetail, setStatusDetail] = useState('Enter a YouTube URL to begin');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleAnalyze = async () => {
     if (!url) {
@@ -67,7 +68,8 @@ function App() {
       url,
       quality: selectedQuality,
       language: selectedAudio,
-      status: 'Queued'
+      status: 'Queued',
+      title: url
     };
 
     setDownloadQueue([...downloadQueue, newItem]);
@@ -75,6 +77,60 @@ function App() {
     setAnalyzed(false);
     setSelectedQuality('Analyze video first');
     setSelectedAudio('Analyze video first');
+  };
+
+  const handleStartQueue = async () => {
+    if (downloadQueue.length === 0) {
+      alert('Queue is empty!');
+      return;
+    }
+
+    setIsDownloading(true);
+    
+    for (let i = 0; i < downloadQueue.length; i++) {
+      const item = downloadQueue[i];
+      
+      setDownloadQueue(prev => prev.map((q, idx) => 
+        idx === i ? { ...q, status: 'Downloading...' } : q
+      ));
+      
+      setStatus('Downloading...');
+      setStatusDetail(`Processing ${i + 1} of ${downloadQueue.length}`);
+
+      try {
+        const response = await fetch(`${API_URL}/api/download`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: item.url,
+            video_quality: item.quality,
+            audio_language: item.language
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setDownloadQueue(prev => prev.map((q, idx) => 
+            idx === i ? { ...q, status: 'Completed', downloadUrl: result.download_url } : q
+          ));
+          
+          window.open(result.download_url, '_blank');
+        } else {
+          setDownloadQueue(prev => prev.map((q, idx) => 
+            idx === i ? { ...q, status: 'Failed' } : q
+          ));
+        }
+      } catch (error) {
+        setDownloadQueue(prev => prev.map((q, idx) => 
+          idx === i ? { ...q, status: 'Failed' } : q
+        ));
+      }
+    }
+
+    setStatus('Completed');
+    setStatusDetail('All downloads processed!');
+    setIsDownloading(false);
   };
 
   const handleClearQueue = () => {
@@ -192,16 +248,8 @@ function App() {
 
             <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
               <h2 className="text-xl font-semibold mb-4">📊 Progress</h2>
-              <div className="w-full bg-slate-700 rounded-full h-3 mb-3">
-                <div className="bg-cyan-500 h-3 rounded-full" style={{width: '0%'}}></div>
-              </div>
               <p className="text-lg font-semibold">{status}</p>
               <p className="text-sm text-gray-400">{statusDetail}</p>
-              <div className="mt-3 text-xs text-gray-500">
-                <p>Speed: --</p>
-                <p>ETA: --</p>
-                <p>Size: --</p>
-              </div>
             </div>
           </div>
         </div>
@@ -229,7 +277,12 @@ function App() {
                     <p className="text-sm font-semibold truncate mb-2">{item.url}</p>
                     <p className="text-xs text-gray-400">Quality: {item.quality}</p>
                     <p className="text-xs text-gray-400">Language: {item.language}</p>
-                    <p className="text-xs text-cyan-400 mt-2">{item.status}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      {item.status === 'Completed' && <CheckCircle className="w-4 h-4 text-green-400" />}
+                      <p className={`text-xs ${item.status === 'Completed' ? 'text-green-400' : item.status === 'Failed' ? 'text-red-400' : 'text-cyan-400'}`}>
+                        {item.status}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -237,9 +290,13 @@ function App() {
           </div>
 
           <div className="p-4 border-t border-slate-700 space-y-2">
-            <button className="w-full px-4 py-3 bg-cyan-500 hover:bg-cyan-600 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2">
+            <button 
+              onClick={handleStartQueue}
+              disabled={downloadQueue.length === 0 || isDownloading}
+              className="w-full px-4 py-3 bg-cyan-500 hover:bg-cyan-600 rounded-lg font-semibold transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
               <Play className="w-5 h-5" />
-              Start Queue
+              {isDownloading ? 'Processing...' : 'Start Queue'}
             </button>
             <button
               onClick={handleClearQueue}
