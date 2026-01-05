@@ -9,6 +9,8 @@ function App() {
   const [analyzed, setAnalyzed] = useState(false);
   const [qualities, setQualities] = useState([]);
   const [languages, setLanguages] = useState([]);
+  const [qualityFormats, setQualityFormats] = useState({});
+  const [audioFormats, setAudioFormats] = useState({});
   const [selectedQuality, setSelectedQuality] = useState('Analyze video first');
   const [selectedAudio, setSelectedAudio] = useState('Analyze video first');
   const [downloadQueue, setDownloadQueue] = useState([]);
@@ -41,6 +43,8 @@ function App() {
         const langs = Object.keys(result.data.audio_formats);
         setQualities(quals);
         setLanguages(langs);
+        setQualityFormats(result.data.video_formats);
+        setAudioFormats(result.data.audio_formats);
         setSelectedQuality(quals[0]);
         setSelectedAudio(langs[0]);
         setStatus('Ready');
@@ -68,6 +72,8 @@ function App() {
       url,
       quality: selectedQuality,
       language: selectedAudio,
+      videoFormatId: qualityFormats[selectedQuality],
+      audioFormatId: audioFormats[selectedAudio],
       status: 'Queued',
       title: url
     };
@@ -103,8 +109,8 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url: item.url,
-            video_quality: item.quality,
-            audio_language: item.language
+            video_format_id: item.videoFormatId,
+            audio_format_id: item.audioFormatId
           })
         });
 
