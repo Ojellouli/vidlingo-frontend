@@ -1,329 +1,316 @@
-import React, { useState } from 'react';
-import { Download, Video, Music, Trash2, Play, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import './App.css';
 
-const API_URL = 'https://api.vidlingo.site';
-
+const API_URL = 'http://159.65.164.52:8080';
 function App() {
   const [url, setUrl] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analyzed, setAnalyzed] = useState(false);
-  const [videoTitle, setVideoTitle] = useState('');
-  const [qualities, setQualities] = useState([]);
-  const [languages, setLanguages] = useState([]);
-  const [qualityFormats, setQualityFormats] = useState({});
-  const [audioFormats, setAudioFormats] = useState({});
-  const [selectedQuality, setSelectedQuality] = useState('Analyze video first');
-  const [selectedAudio, setSelectedAudio] = useState('Analyze video first');
-  const [downloadQueue, setDownloadQueue] = useState([]);
-  const [status, setStatus] = useState('Ready');
-  const [statusDetail, setStatusDetail] = useState('Enter a YouTube URL to begin');
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [videoInfo, setVideoInfo] = useState(null);
+  const [selectedQuality, setSelectedQuality] = useState('');
+  const [selectedLanguage, setSelectedLanguage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState('');
+  const [queue, setQueue] = useState([]);
+  const [processingQueue, setProcessingQueue] = useState(false);
 
-  const handleAnalyze = async () => {
-    if (!url) {
-      alert('Please enter a YouTube URL');
+  const analyzeVideo = async () => {
+    if (!url.trim()) {
+      setError('Please enter a YouTube URL');
       return;
     }
 
-    setIsAnalyzing(true);
-    setStatus('Analyzing...');
-    setStatusDetail('Please wait...');
+    setLoading(true);
+    setError('');
+    setVideoInfo(null);
 
     try {
       const response = await fetch(`${API_URL}/api/analyze`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
       });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setAnalyzed(true);
-        setVideoTitle(result.data.title);
-        const quals = Object.keys(result.data.video_formats);
-        const langs = Object.keys(result.data.audio_formats);
-        setQualities(quals);
-        setLanguages(langs);
-        setQualityFormats(result.data.video_formats);
-        setAudioFormats(result.data.audio_formats);
-        setSelectedQuality(quals[0]);
-        setSelectedAudio(langs[0]);
-        setStatus('Ready');
-        setStatusDetail(`Found ${quals.length} quality options`);
+
+      const data = await response.json();
+
+      if (data.success) {
+        setVideoInfo(data);
+        setSelectedQuality(data.qualities[0] || '720p');
+        setSelectedLanguage(Object.keys(data.languages)[0] || 'en');
+        setError('');
       } else {
-        setStatus('Error');
-        setStatusDetail('Failed to analyze: ' + result.error);
+        setError(data.error || 'Failed to analyze video');
       }
-    } catch (error) {
-      setStatus('Error');
-      setStatusDetail('Error: ' + error.message);
+    } catch (err) {
+      setError('Failed to connect to server: ' + err.message);
     } finally {
-      setIsAnalyzing(false);
+      setLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && url && !isAnalyzing) {
-      handleAnalyze();
-    }
-  };
+  const addToQueue = () => {
+    if (!videoInfo) return;
 
-  const handleAddToQueue = () => {
-    if (!analyzed) {
-      alert('Please analyze a video first');
-      return;
-    }
-
-    const audioData = audioFormats[selectedAudio];
-    const newItem = {
+    const queueItem = {
       id: Date.now(),
       url,
-      title: videoTitle,
+      title: videoInfo.title,
       quality: selectedQuality,
-      language: selectedAudio,
-      langCode: audioData.lang_code,
-      status: 'Queued'
+      language: selectedLanguage,
+      thumbnail: videoInfo.thumbnail,
     };
 
-    setDownloadQueue([...downloadQueue, newItem]);
+    setQueue([...queue, queueItem]);
     setUrl('');
-    setAnalyzed(false);
-    setSelectedQuality('Analyze video first');
-    setSelectedAudio('Analyze video first');
+    setVideoInfo(null);
+    setError('');
   };
 
-  const handleStartQueue = async () => {
-    if (downloadQueue.length === 0) {
-      alert('Queue is empty!');
-      return;
+  const removeFromQueue = (id) => {
+    setQueue(queue.filter(item => item.id !== id));
+  };
+
+  const clearQueue = () => {
+    setQueue([]);
+  };
+
+  const downloadVideo = async (item) => {
+    setDownloading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: item.url,
+          quality: item.quality,
+          lang_code: item.language,
+          title: item.title,
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `${item.title}_${item.language}_${item.quality}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(downloadUrl);
+        return true;
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Download failed');
+        return false;
+      }
+    } catch (err) {
+      setError('Download failed: ' + err.message);
+      return false;
+    } finally {
+      setDownloading(false);
     }
+  };
 
-    setIsDownloading(true);
-    
-    for (let i = 0; i < downloadQueue.length; i++) {
-      const item = downloadQueue[i];
+  const processQueue = async () => {
+    if (queue.length === 0 || processingQueue) return;
+
+    setProcessingQueue(true);
+
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
+      const success = await downloadVideo(item);
       
-      setDownloadQueue(prev => prev.map((q, idx) => 
-        idx === i ? { ...q, status: 'Downloading...' } : q
-      ));
-      
-      setStatus('Downloading...');
-      setStatusDetail(`Processing ${i + 1} of ${downloadQueue.length}`);
-
-      try {
-        const response = await fetch(`${API_URL}/api/download`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: item.url,
-            title: item.title,
-            quality: item.quality,
-            lang_code: item.langCode
-          })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-          setDownloadQueue(prev => prev.map((q, idx) => 
-            idx === i ? { ...q, status: 'Completed', downloadUrl: result.download_url } : q
-          ));
-          
-          window.open(result.download_url, '_blank');
-        } else {
-          setDownloadQueue(prev => prev.map((q, idx) => 
-            idx === i ? { ...q, status: 'Failed' } : q
-          ));
-        }
-      } catch (error) {
-        setDownloadQueue(prev => prev.map((q, idx) => 
-          idx === i ? { ...q, status: 'Failed' } : q
-        ));
+      if (success) {
+        setQueue(prev => prev.filter(q => q.id !== item.id));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
 
-    setStatus('Completed');
-    setStatusDetail('All downloads processed!');
-    setIsDownloading(false);
-  };
-
-  const handleClearQueue = () => {
-    setDownloadQueue([]);
-  };
-
-  const handleClear = () => {
-    setUrl('');
-  };
-
-  const handlePaste = async () => {
-    const text = await navigator.clipboard.readText();
-    setUrl(text);
+    setProcessingQueue(false);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 text-white">
-      <div className="flex h-screen">
-        <div className="flex-1 p-8 overflow-y-auto">
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <Video className="w-10 h-10 text-cyan-400" />
-              <h1 className="text-4xl font-bold text-cyan-400">Vidlingo</h1>
-            </div>
-          </div>
-
-          <div className="space-y-6 max-w-2xl">
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Video className="w-5 h-5" />
-                Video URL
-              </h2>
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Paste YouTube URL here and press Enter..."
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg focus:border-cyan-400 focus:outline-none text-white placeholder-gray-400 mb-3"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={handlePaste}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
-                >
-                  Paste
-                </button>
-                <button
-                  onClick={handleClear}
-                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex items-center gap-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Clear
-                </button>
-                <button
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing}
-                  className="flex-1 px-6 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg font-semibold transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
-                >
-                  {isAnalyzing ? 'Analyzing...' : '🔍 Analyze Video'}
-                </button>
+    <div className="app">
+      <div className="main-container">
+        <div className="left-panel">
+          <header className="header">
+            <div className="logo">
+              <svg width="50" height="50" viewBox="0 0 50 50">
+                <defs>
+                  <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#00d4ff" />
+                    <stop offset="100%" stopColor="#8a2be2" />
+                  </linearGradient>
+                </defs>
+                <circle cx="25" cy="25" r="22" fill="url(#logoGrad)" opacity="0.2"/>
+                <path d="M20 15 L35 25 L20 35 Z" fill="url(#logoGrad)" />
+              </svg>
+              <div>
+                <h1>Vidlingo</h1>
+                <p className="tagline">Multi-language video downloader</p>
               </div>
             </div>
+          </header>
 
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Video className="w-5 h-5" />
-                Video Quality
-              </h2>
-              <label className="block text-sm text-gray-400 mb-2">Select video quality:</label>
-              <select
-                value={selectedQuality}
-                onChange={(e) => setSelectedQuality(e.target.value)}
-                disabled={!analyzed}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg focus:border-cyan-400 focus:outline-none text-white disabled:opacity-50"
-              >
-                <option>{selectedQuality}</option>
-                {analyzed && qualities.filter(q => q !== selectedQuality).map((quality) => (
-                  <option key={quality} value={quality}>{quality}</option>
-                ))}
-              </select>
+          <div className="card">
+            <div className="card-header">
+              <h2>🔗 Video URL</h2>
             </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Music className="w-5 h-5" />
-                Audio Language
-              </h2>
-              <label className="block text-sm text-gray-400 mb-2">Select audio language:</label>
-              <select
-                value={selectedAudio}
-                onChange={(e) => setSelectedAudio(e.target.value)}
-                disabled={!analyzed}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg focus:border-cyan-400 focus:outline-none text-white disabled:opacity-50"
-              >
-                <option>{selectedAudio}</option>
-                {analyzed && languages.filter(l => l !== selectedAudio).map((lang) => (
-                  <option key={lang} value={lang}>{lang}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Download className="w-5 h-5" />
-                Download
-              </h2>
-              <button
-                onClick={handleAddToQueue}
-                disabled={!analyzed}
-                className="w-full px-6 py-4 bg-cyan-500 hover:bg-cyan-600 rounded-lg font-semibold transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                + Add to Queue
-              </button>
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
-              <h2 className="text-xl font-semibold mb-4">📊 Progress</h2>
-              <p className="text-lg font-semibold">{status}</p>
-              <p className="text-sm text-gray-400">{statusDetail}</p>
-            </div>
+            <input
+              type="text"
+              className="input"
+              placeholder="Paste YouTube URL here..."
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && analyzeVideo()}
+            />
+            <button
+              className="button button-primary"
+              onClick={analyzeVideo}
+              disabled={loading}
+            >
+              {loading ? '⏳ Analyzing...' : '🔍 Analyze Video'}
+            </button>
           </div>
+
+          {error && (
+            <div className="error">
+              <span>⚠️</span>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {videoInfo && (
+            <>
+              <div className="card">
+                <div className="card-header">
+                  <h2>📹 Video Information</h2>
+                </div>
+                <div className="video-info">
+                  {videoInfo.thumbnail && (
+                    <img src={videoInfo.thumbnail} alt="Thumbnail" className="thumbnail" />
+                  )}
+                  <div className="info-details">
+                    <p className="video-title">{videoInfo.title}</p>
+                    <p className="duration">
+                      ⏱️ Duration: {Math.floor(videoInfo.duration / 60)}:{(videoInfo.duration % 60).toString().padStart(2, '0')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">
+                  <h2>⚙️ Download Options</h2>
+                </div>
+                
+                <div className="options-grid">
+                  <div className="option-group">
+                    <label>📊 Video Quality</label>
+                    <select
+                      className="select"
+                      value={selectedQuality}
+                      onChange={(e) => setSelectedQuality(e.target.value)}
+                    >
+                      {videoInfo.qualities.map((quality) => (
+                        <option key={quality} value={quality}>
+                          {quality}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="option-group">
+                    <label>🎵 Audio Language</label>
+                    <select
+                      className="select"
+                      value={selectedLanguage}
+                      onChange={(e) => setSelectedLanguage(e.target.value)}
+                    >
+                      {Object.entries(videoInfo.languages).map(([code, name]) => (
+                        <option key={code} value={code}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  className="button button-add-queue"
+                  onClick={addToQueue}
+                >
+                  ➕ Add to Queue
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="w-96 bg-slate-900 border-l border-slate-700 flex flex-col">
-          <div className="p-6 border-b border-slate-700">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              📋 Download Queue
-            </h2>
-            <p className="text-sm text-gray-400 mt-1">
-              {downloadQueue.length === 0 ? 'Queue is empty' : `${downloadQueue.length} item(s)`}
-            </p>
+        <div className="right-panel">
+          <div className="queue-header">
+            <h2>📋 Download Queue</h2>
+            <span className="queue-count">{queue.length} item(s)</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {downloadQueue.length === 0 ? (
-              <div className="text-center text-gray-500 mt-20">
-                <Download className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                <p>No downloads in queue</p>
+          <div className="queue-list">
+            {queue.length === 0 ? (
+              <div className="empty-queue">
+                <p>Queue is empty</p>
+                <p className="empty-subtitle">Add videos to start downloading</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {downloadQueue.map((item) => (
-                  <div key={item.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                    <p className="text-sm font-semibold truncate mb-2">{item.title || item.url}</p>
-                    <p className="text-xs text-gray-400">Quality: {item.quality}</p>
-                    <p className="text-xs text-gray-400">Language: {item.language}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      {item.status === 'Completed' && <CheckCircle className="w-4 h-4 text-green-400" />}
-                      <p className={`text-xs ${item.status === 'Completed' ? 'text-green-400' : item.status === 'Failed' ? 'text-red-400' : 'text-cyan-400'}`}>
-                        {item.status}
-                      </p>
-                    </div>
+              queue.map((item) => (
+                <div key={item.id} className="queue-item">
+                  <img src={item.thumbnail} alt="" className="queue-thumb" />
+                  <div className="queue-info">
+                    <p className="queue-title">{item.title.substring(0, 40)}...</p>
+                    <p className="queue-details">
+                      {item.quality} • {item.language.toUpperCase()}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <button
+                    className="remove-btn"
+                    onClick={() => removeFromQueue(item.id)}
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
             )}
           </div>
 
-          <div className="p-4 border-t border-slate-700 space-y-2">
-            <button 
-              onClick={handleStartQueue}
-              disabled={downloadQueue.length === 0 || isDownloading}
-              className="w-full px-4 py-3 bg-cyan-500 hover:bg-cyan-600 rounded-lg font-semibold transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              <Play className="w-5 h-5" />
-              {isDownloading ? 'Processing...' : 'Start Queue'}
-            </button>
-            <button
-              onClick={handleClearQueue}
-              className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              <Trash2 className="w-5 h-5" />
-              Clear Queue
-            </button>
-          </div>
+          {queue.length > 0 && (
+            <div className="queue-actions">
+              <button
+                className="button button-process"
+                onClick={processQueue}
+                disabled={processingQueue || downloading}
+              >
+                {processingQueue ? '⏬ Processing...' : '▶️ Start Queue'}
+              </button>
+              <button
+                className="button button-clear"
+                onClick={clearQueue}
+                disabled={processingQueue}
+              >
+                🗑️ Clear All
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      <footer className="footer">
+        <p>Made with ❤️ by Vidlingo • Download YouTube videos with multiple audio tracks</p>
+      </footer>
     </div>
   );
 }
