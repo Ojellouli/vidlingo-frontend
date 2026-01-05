@@ -118,12 +118,11 @@ function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            url: item.url,
-            title: item.title,
-            video_format_id: item.videoFormatId,
-            audio_format_id: item.audioFormatId,
-            lang_code: item.langCode
-          })
+  url: item.url,
+  title: item.title,
+  quality: item.quality,
+  lang_code: item.langCode
+})
         });
 
         const result = await response.json();
