@@ -82,8 +82,6 @@ function App() {
       title: videoTitle,
       quality: selectedQuality,
       language: selectedAudio,
-      videoFormatId: qualityFormats[selectedQuality],
-      audioFormatId: audioData.format_id,
       langCode: audioData.lang_code,
       status: 'Queued'
     };
@@ -118,11 +116,11 @@ function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-  url: item.url,
-  title: item.title,
-  quality: item.quality,
-  lang_code: item.langCode
-})
+            url: item.url,
+            title: item.title,
+            quality: item.quality,
+            lang_code: item.langCode
+          })
         });
 
         const result = await response.json();
